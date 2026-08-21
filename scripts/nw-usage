@@ -12,6 +12,7 @@
 #   - never outputs errors to stderr
 #   - never returns a non-zero exit code
 #   - never presents stale data as current
+#   - invalidates the cache when the calendar date changes
 #   - shows unknown values when current data cannot be determined
 
 set -euo pipefail
@@ -102,12 +103,21 @@ if [[ "$USE_CACHE" == "true" && -f "$CACHE_FILE" ]]; then
 
   cache_age=$(($(date +%s) - cache_mtime))
 
+  # Cache must also belong to the current calendar day.
+  if [[ "$(uname)" == "Darwin" ]]; then
+    cache_date=$(date -r "$cache_mtime" +%F 2>/dev/null || echo "")
+  else
+    cache_date=$(date -d "@$cache_mtime" +%F 2>/dev/null || echo "")
+  fi
+
   # Only use the cache if:
   # 1. it is fresh
-  # 2. it contains a valid successful API response
+  # 2. it was written today
+  # 3. it contains a valid successful API response
   #
   # daily is allowed to be empty.
   if (( cache_age >= 0 && cache_age < CACHE_MAX_AGE )) \
+    && [[ "$cache_date" == "$TODAY" ]] \
     && jq -e '
       (.totals | type == "object") and
       (.daily | type == "array")
